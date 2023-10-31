@@ -4,7 +4,12 @@ import (
 	"debug/macho"
 	"errors"
 	"io"
+
+	"github.com/konoui/lmacho/ar"
+	"github.com/konoui/lmacho/cpu"
 )
+
+const MagicFat = macho.MagicFat
 
 // FatHeader presents a header for a fat 32 bit and fat 64 bit
 // see /Library/Developer/CommandLineTools/SDKs/MacOSX.sdk/usr/include/mach-o/fat.h
@@ -15,9 +20,9 @@ type FatHeader struct {
 
 // FatArchHeader presents an architecture header for a Macho-0 32 bit and 64 bit
 type FatArchHeader struct {
-	Cpu    macho.Cpu
-	SubCpu SubCpu
-	Offset uint64
+	Cpu    cpu.Cpu
+	SubCpu cpu.SubCpu
+	offset uint64 // internal properties to calculate in this package
 	Size   uint64
 	Align  uint32
 }
@@ -49,6 +54,95 @@ type FormatError struct {
 
 func (e *FormatError) Error() string {
 	return e.Err.Error()
+}
+
+type FatFile struct {
+	FatHeader
+	Arches []FatArch
+}
+
+// NewFatFile is wrapper for Fat Reader
+func NewFatFile(ra io.ReaderAt) (*FatFile, error) {
+	r, err := NewReader(ra)
+	if err != nil {
+		return nil, err
+	}
+
+	fa := &FatFile{
+		Arches:    make([]FatArch, 0),
+		FatHeader: r.FatHeader,
+	}
+
+	for {
+		a, err := r.Next()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			return nil, err
+		}
+
+		fa.Arches = append(fa.Arches, *a)
+	}
+	return fa, nil
+}
+
+func NewFatArch(sr *io.SectionReader) (*FatArch, error) {
+	getFromAr := func(ra io.ReaderAt) (*macho.File, error) {
+		r, err := ar.NewReader(sr)
+		if err != nil {
+			return nil, err
+		}
+
+		for {
+			f, err := r.Next()
+			if err != nil {
+				return nil, err
+			}
+
+			if f.Name == ar.PrefixSymdef {
+				continue
+			}
+
+			return macho.NewFile(sr)
+		}
+	}
+
+	var hdr *FatArchHeader
+	errs := make([]error, 0, 2)
+	for _, getter := range []func(io.ReaderAt) (*macho.File, error){
+		macho.NewFile,
+		getFromAr,
+	} {
+		m, err := getter(sr)
+		if err != nil {
+			errs = append(errs, err)
+			continue
+		}
+
+		hdr = &FatArchHeader{
+			Cpu:    m.Cpu,
+			SubCpu: m.SubCpu,
+			Align:  SegmentAlignBit(m),
+			Size:   uint64(sr.Size()),
+		}
+
+		if _, err := sr.Seek(0, io.SeekStart); err != nil {
+			return nil, err
+		}
+		break
+	}
+
+	if hdr == nil {
+		return nil, errors.Join(errs...)
+	}
+
+	arch := FatArch{
+		FatArchHeader: *hdr,
+		sr:            sr,
+	}
+
+	return &arch, nil
 }
 
 func fatHeaderSize() uint64 {

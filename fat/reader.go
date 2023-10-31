@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+
+	"github.com/konoui/lmacho/cpu"
 )
 
 type Reader struct {
@@ -58,13 +60,13 @@ func (r *Reader) Next() (*FatArch, error) {
 		}
 
 		fa := &FatArch{
-			sr:            io.NewSectionReader(r.r, int64(hdr.Offset), int64(hdr.Size)),
+			sr:            io.NewSectionReader(r.r, int64(hdr.offset), int64(hdr.Size)),
 			FatArchHeader: *hdr,
 			Hidden:        false,
 		}
 
 		if r.firstObjectOffset == 0 {
-			r.firstObjectOffset = hdr.Offset
+			r.firstObjectOffset = hdr.offset
 		}
 
 		return fa, nil
@@ -83,13 +85,13 @@ func (r *Reader) Next() (*FatArch, error) {
 		return nil, &FormatError{fmt.Errorf("hideARM64: %w", err)}
 	}
 
-	if fatHdr.Cpu != CpuTypeArm64 {
+	if fatHdr.Cpu != cpu.TypeArm64 {
 		// TODO handle error
 		return nil, io.EOF
 	}
 
 	return &FatArch{
-		sr:            io.NewSectionReader(r.r, int64(fatHdr.Offset), int64(fatHdr.Size)),
+		sr:            io.NewSectionReader(r.r, int64(fatHdr.offset), int64(fatHdr.Size)),
 		FatArchHeader: *fatHdr,
 		Hidden:        true,
 	}, nil
@@ -108,7 +110,7 @@ func readFatArchHeader(r io.Reader, magic uint32) (*FatArchHeader, error) {
 			SubCpu: fatHdr.SubCpu,
 			Align:  fatHdr.Align,
 			Size:   fatHdr.Size,
-			Offset: fatHdr.Offset,
+			offset: fatHdr.offset,
 		}, nil
 	}
 
@@ -122,6 +124,6 @@ func readFatArchHeader(r io.Reader, magic uint32) (*FatArchHeader, error) {
 		SubCpu: fatHdr.SubCpu,
 		Align:  fatHdr.Align,
 		Size:   uint64(fatHdr.Size),
-		Offset: uint64(fatHdr.Offset),
+		offset: uint64(fatHdr.Offset),
 	}, nil
 }

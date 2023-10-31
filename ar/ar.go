@@ -15,7 +15,7 @@ const (
 )
 
 var (
-	magicHeader      = []byte("!<arch>\n")
+	MagicHeader      = []byte("!<arch>\n")
 	ErrInvalidFormat = errors.New("not ar file format")
 )
 
@@ -39,7 +39,7 @@ type Reader struct {
 }
 
 func NewReader(r io.ReaderAt) (*Reader, error) {
-	mhLen := len(magicHeader)
+	mhLen := len(MagicHeader)
 	buf := make([]byte, mhLen)
 	sr := io.NewSectionReader(r, 0, 1<<63-1)
 	if _, err := io.ReadFull(sr, buf); err != nil {
@@ -49,9 +49,9 @@ func NewReader(r io.ReaderAt) (*Reader, error) {
 		return nil, err
 	}
 
-	if !bytes.Equal(magicHeader, buf) {
+	if !bytes.Equal(MagicHeader, buf) {
 		return nil, fmt.Errorf("invalid magic header want: %s, got: %s: %w",
-			string(magicHeader), string(buf), ErrInvalidFormat)
+			string(MagicHeader), string(buf), ErrInvalidFormat)
 	}
 
 	return &Reader{sr: sr, cur: int64(mhLen), next: int64(mhLen)}, nil
